@@ -628,7 +628,7 @@ function logSystem(msg){const log=document.getElementById('serialLog');log.inner
 // ── FIREBASE ──
 const firebaseConfig = { databaseURL: "https://tech-d68c0-default-rtdb.asia-southeast1.firebasedatabase.app/" };
 firebase.initializeApp(firebaseConfig);
-const db=firebase.database(), scansRef=db.ref('scans').limitToLast(1);
+const db=firebase.database(), scansRef=db.ref('scans').limitToLast(1);	
 let firstLoad=true;
 scansRef.on('child_added',(snapshot)=>{
   const data=snapshot.val();
