@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MediCore HMS — RFID System</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<style>
+  :root {
+    --bg: #080d1a; --surface: #0e1525; --card: #111c2e; --border: #1a2840;
+    --accent: #00e5ff; --accent2: #0066ff; --green: #00e676; --red: #ff3d57;
+    --yellow: #ffd740; --purple: #bb86fc; --text: #e8f0fe; --muted: #4a6080;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+  body::before { content: ''; position: fixed; inset: 0; z-index: 0; background-image: linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px); background-size: 40px 40px; animation: gridMove 20s linear infinite; pointer-events: none; }
+  @keyframes gridMove { from { transform: translateY(0); } to { transform: translateY(40px); } }
+
+  .layout { display: flex; min-height: 100vh; position: relative; z-index: 1; }
+
+  /* SIDEBAR */
+  .sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 0; flex-shrink: 0; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .sidebar-logo { padding: 28px 24px 24px; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, rgba(0,229,255,0.05), transparent); }
+  .logo-tag { font-size: 10px; letter-spacing: 3px; color: var(--accent); font-weight: 700; text-transform: uppercase; margin-bottom: 6px; }
+  .logo-title { font-family: 'Playfair Display', serif; font-size: 22px; line-height: 1.2; color: var(--text); }
+  .logo-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .nav-section { padding: 20px 0 8px; }
+  .nav-label { font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; padding: 0 24px 8px; font-weight: 700; }
+  .nav-btn { width: 100%; text-align: left; padding: 11px 24px; background: none; border: none; border-left: 3px solid transparent; color: var(--muted); font-size: 13.5px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: all 0.2s; font-family: 'DM Sans', sans-serif; font-weight: 500; position: relative; }
+  .nav-btn:hover { color: var(--text); background: rgba(0,229,255,0.04); }
+  .nav-btn.active { color: var(--accent); border-left-color: var(--accent); background: linear-gradient(90deg, rgba(0,229,255,0.1), transparent); }
+  .nav-btn .badge { margin-left: auto; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px; }
+  .nav-icon { width: 18px; text-align: center; }
+
+  .rfid-sidebar { margin: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .rfid-sidebar-title { font-size: 11px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 10px; }
+  .rfid-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 6px; }
+  .rfid-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .rfid-status-text { font-size: 12px; color: var(--text); font-weight: 600; }
+  .rfid-port-text { font-size: 10px; color: var(--muted); margin-top: 4px; }
+  .sidebar-footer { padding: 16px 24px; border-top: 1px solid var(--border); margin-top: auto; }
+  .admin-tag { font-size: 10px; color: var(--muted); }
+  .admin-name { font-size: 13px; color: var(--text); font-weight: 600; margin-top: 2px; }
+
+  /* MAIN */
+  .main { flex: 1; padding: 32px; overflow-y: auto; }
+  .page-header { margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .page-title { font-family: 'Playfair Display', serif; font-size: 30px; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .page-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  /* RFID SCANNER PANEL */
+  .rfid-panel { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 28px; margin-bottom: 28px; position: relative; overflow: hidden; }
+  .rfid-panel::before { content: ''; position: absolute; top: -40px; right: -40px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(0,229,255,0.08), transparent 70%); pointer-events: none; }
+  .rfid-panel-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .rfid-icon-big { width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, var(--accent2), var(--accent)); display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; box-shadow: 0 8px 24px rgba(0,229,255,0.3); }
+  .rfid-panel-title { font-family: 'Playfair Display', serif; font-size: 20px; }
+  .rfid-panel-desc { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  .scan-area { border: 2px dashed var(--border); border-radius: 14px; padding: 28px; text-align: center; transition: all 0.3s; position: relative; overflow: hidden; }
+  .scan-area.scanning { border-color: var(--accent); background: rgba(0,229,255,0.03); animation: scanPulse 1.5s infinite; }
+  @keyframes scanPulse { 0%,100%{border-color:var(--accent)} 50%{border-color:rgba(0,229,255,0.3)} }
+  .scan-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.6; }
+  .scan-text { font-size: 15px; color: var(--muted); }
+  .scan-uid { font-family: 'JetBrains Mono', monospace; font-size: 22px; color: var(--accent); font-weight: 600; letter-spacing: 3px; margin: 8px 0; }
+  .scan-result { margin-top: 16px; padding: 14px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; display: none; }
+  .scan-result.found { background: rgba(0,230,118,0.1); border: 1px solid var(--green); color: var(--green); display: block; }
+  .scan-result.notfound { background: rgba(255,61,87,0.1); border: 1px solid var(--red); color: var(--red); display: block; }
+  .demo-btns { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; justify-content: center; }
+  .demo-btn { padding: 9px 18px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-weight: 600; transition: all 0.2s; }
+  .demo-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* STATS & TABLES */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 22px; position: relative; overflow: hidden; cursor: default; transition: transform 0.2s, border-color 0.2s; }
+  .stat-card:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .stat-card::after { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(0,229,255,0.04), transparent); pointer-events: none; }
+  .stat-num { font-family: 'Playfair Display', serif; font-size: 36px; font-weight: 700; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; font-weight: 500; letter-spacing: 0.5px; }
+  .stat-icon { position: absolute; top: 18px; right: 18px; font-size: 28px; opacity: 0.15; }
+
+  .add-btn { padding: 10px 22px; border-radius: 10px; border: none; background: linear-gradient(135deg, var(--accent2), var(--accent)); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'DM Sans', sans-serif; white-space: nowrap; box-shadow: 0 4px 16px rgba(0,229,255,0.25); transition: 0.2s; }
+  .add-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,229,255,0.35); }
+  
+  .btn-discharge { background: rgba(255,193,7,0.15); color: #ffc107; border: 1px solid rgba(255,193,7,0.3); padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; transition: 0.2s; }
+  .btn-discharge:hover { background: rgba(255,193,7,0.25); }
+
+  .table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: var(--surface); }
+  th { padding: 14px 16px; text-align: left; font-size: 10.5px; color: var(--muted); font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  td { padding: 13px 16px; font-size: 13.5px; border-bottom: 1px solid rgba(26,40,64,0.5); vertical-align: middle; }
+  .tr-highlight td { animation: rowFlash 2s ease-out; }
+  @keyframes rowFlash { 0%{background:rgba(0,229,255,0.15)} 100%{background:transparent} }
+
+  /* BADGES & DOTS */
+  .badge { padding: 3px 11px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; display: inline-block; white-space: nowrap; }
+  .badge-active { background: rgba(0,230,118,0.15); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+  .badge-onduty { background: rgba(187,134,252,0.15); color: var(--purple); border: 1px solid rgba(187,134,252,0.3); }
+  .badge-available { background: rgba(0,229,255,0.12); color: var(--accent); border: 1px solid rgba(0,229,255,0.25); }
+  .badge-discharged { background: rgba(74,96,128,0.2); color: #7a9cc0; border: 1px solid rgba(74,96,128,0.3); }
+  
+  .id-tag { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); font-weight: 600; background: rgba(0,229,255,0.08); padding: 3px 8px; border-radius: 6px; }
+  .rfid-tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); }
+  .blood-tag { background: rgba(255,61,87,0.15); color: var(--red); padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+
+  /* MODALS & NOTIFS */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 36px; width: 600px; max-height: 90vh; overflow-y: auto; box-shadow: 0 32px 100px rgba(0,0,0,0.7); animation: modalIn 0.3s ease; }
+  @keyframes modalIn { from{opacity:0;transform:scale(0.95) translateY(20px)} to{opacity:1;transform:none} }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+  .modal-title { font-family: 'Playfair Display', serif; font-size: 24px; color: var(--accent); }
+  .modal-close { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+  .form-group { margin-bottom: 18px; }
+  .form-label { font-size: 10.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); font-weight: 700; display: block; margin-bottom: 7px; }
+  .form-input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; color: var(--text); font-size: 13.5px; outline: none; font-family: 'DM Sans', sans-serif; }
+  .form-btns { display: flex; gap: 12px; margin-top: 8px; }
+  .btn-save { flex: 1; background: linear-gradient(135deg, var(--accent2), var(--accent)); border: none; border-radius: 10px; padding: 13px; color: #fff; font-weight: 700; font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+  .btn-cancel { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 13px; color: var(--muted); font-weight: 600; font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+
+  .rfid-notif { position: fixed; top: 24px; right: 24px; z-index: 5000; background: var(--card); border-radius: 16px; padding: 18px 22px; border: 1px solid var(--accent); box-shadow: 0 8px 32px rgba(0,229,255,0.2); min-width: 300px; transform: translateX(140%); transition: transform 0.4s cubic-bezier(0.22,1,0.36,1); display: flex; align-items: center; gap: 14px; }
+  .rfid-notif.show { transform: translateX(0); }
+  .rfid-notif-icon { font-size: 28px; }
+  .rfid-notif-title { font-size: 13px; font-weight: 700; color: var(--accent); }
+  .rfid-notif-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .rfid-notif-uid { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); }
+
+  .serial-log { background: #0a0f0a; border: 1px solid #1a2a1a; border-radius: 12px; padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; height: 160px; overflow-y: auto; color: #4cff4c; line-height: 1.7; }
+  .empty-state { text-align: center; padding: 60px; color: var(--muted); }
+  .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+</style>
+</head>
+<body>
+
+<div class="rfid-notif" id="rfidNotif">
+  <div class="rfid-notif-icon" id="rfidNotifIcon">📡</div>
+  <div>
+    <div class="rfid-notif-title" id="rfidNotifTitle">RFID Scanned</div>
+    <div class="rfid-notif-desc" id="rfidNotifDesc">Unknown card detected</div>
+    <div class="rfid-notif-uid" id="rfidNotifUid"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">Add Record</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-tag">MediCore HMS</div>
+      <div class="logo-title">Hospital<br>Management</div>
+      <div class="logo-sub">RFID-Integrated System</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Navigation</div>
+      <button class="nav-btn active" onclick="showPage('dashboard',this)">
+        <span class="nav-icon">⬛</span> Dashboard
+      </button>
+      <button class="nav-btn" onclick="showPage('patients',this)">
+        <span class="nav-icon">🏥</span> Patients
+        <span class="badge" id="patientBadge">0</span>
+      </button>
+      <button class="nav-btn" onclick="showPage('doctors',this)">
+        <span class="nav-icon">👨‍⚕️</span> Doctors & Staff
+      </button>
+      <button class="nav-btn" onclick="showPage('rfid',this)">
+        <span class="nav-icon">📡</span> RFID Console
+      </button>
+      <button class="nav-btn" onclick="showPage('logs',this)">
+        <span class="nav-icon">📋</span> Access Logs
+        <span class="badge" id="logBadge">0</span>
+      </button>
+    </div>
+
+    <div class="rfid-sidebar">
+      <div class="rfid-sidebar-title">Cloud Connection</div>
+      <div style="display:flex;align-items:center;margin-bottom:4px">
+        <span class="rfid-dot" id="rfidDot"></span>
+        <span class="rfid-status-text" id="rfidStatusText">Offline</span>
+      </div>
+      <div class="rfid-port-text" id="rfidPortText">Waiting for Firebase...</div>
+    </div>
+    
+    <div class="sidebar-footer">
+      <div class="admin-tag">Logged in as</div>
+      <div class="admin-name">🔒 System Admin</div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Live Dashboard</div>
+          <div class="page-sub" id="dashDate"></div>
+        </div>
+      </div>
+      <div class="stats-grid" id="statsGrid"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+            <div style="font-family:'Playfair Display',serif;font-size:17px">Active Patients in Ward</div>
+          </div>
+          <div id="dashPatients"></div>
+        </div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+            <div style="font-family:'Playfair Display',serif;font-size:17px">Staff Status</div>
+          </div>
+          <div id="dashDoctors"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-patients">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Patient Management</div>
+          <div class="page-sub">RFID-tagged patient records</div>
+        </div>
+        <button class="add-btn" onclick="openAddPatient()">+ Add Patient</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>RFID UID</th><th>Name</th><th>Blood</th>
+              <th>Condition</th><th>Ward</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="patientTableBody"></tbody>
+        </table>
+        <div class="empty-state" id="patientEmpty" style="display:none">
+          <div class="empty-icon">🏥</div>
+          <div class="empty-text">No patients found</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-doctors">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Doctors & Staff</div>
+          <div class="page-sub">RFID-tagged staff management</div>
+        </div>
+        <button class="add-btn" onclick="openAddDoctor()">+ Add Staff</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>RFID UID</th><th>Name</th><th>Specialization</th>
+              <th>Shift</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="doctorTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="page" id="page-rfid">
+      <div class="page-header">
+        <div>
+          <div class="page-title">RFID Console</div>
+          <div class="page-sub">Live Firebase Cloud Connection</div>
+        </div>
+      </div>
+      <div class="rfid-panel">
+        <div class="rfid-panel-header">
+          <div class="rfid-icon-big">📡</div>
+          <div>
+            <div class="rfid-panel-title">ESP32 Cloud Receiver</div>
+            <div class="rfid-panel-desc">Listening to Firebase Realtime Database for live ESP32 scans.</div>
+          </div>
+        </div>
+        <div class="scan-area" id="scanArea">
+          <div class="scan-icon" id="scanIcon">📟</div>
+          <div id="scanStatus" class="scan-text">Ready — Tap card on ESP32</div>
+          <div class="scan-uid" id="scanUID" style="display:none"></div>
+          <div class="scan-result" id="scanResult"></div>
+          <div class="demo-btns" id="demoBtns">
+            <span style="font-size:12px;color:var(--muted);width:100%;margin-bottom:4px">🎮 Demo — manually trigger logic:</span>
+            <button class="demo-btn" onclick="processUID('A1:B2:C3:D4')">Patient: Aanya</button>
+            <button class="demo-btn" onclick="processUID('00:11:AA:BB')">Doctor: Ramesh</button>
+            <button class="demo-btn" onclick="processUID('ZZ:ZZ:ZZ:ZZ')">Unknown Card</button>
+          </div>
+        </div>
+        <div style="margin-top:20px">
+          <div style="font-size:11px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:8px">System Log</div>
+          <div class="serial-log" id="serialLog">&gt; Initializing system...<br/></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-logs">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Attendance & Access Logs</div>
+          <div class="page-sub">Daily entry and exit tracking for staff and patients</div>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <button class="add-btn" style="background:#00e676;color:#080d1a;box-shadow: 0 4px 16px rgba(0,230,118,0.25);" onclick="exportToExcel()">⬇ Export to Excel</button>
+          <button class="add-btn" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);box-shadow:none;" onclick="clearLogs()">Clear Logs</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th><th>Role / Type</th><th>Entry Time</th><th>Exit Time</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody"></tbody>
+        </table>
+        <div class="empty-state" id="logEmpty" style="display:none">
+          <div class="empty-icon">📋</div>
+          <div class="empty-text">No attendance records today.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ===================== DATA INITIALIZATION & LOCAL STORAGE =====================
+const todayStr = new Date().toDateString();
+
+let patients = JSON.parse(localStorage.getItem('hms_patients'));
+if (!patients) {
+  patients = [
+    { id:"P001", rfid:"A1:B2:C3:D4", name:"Aanya Sharma", blood:"B+", condition:"Hypertension", status:"Active", ward:"Cardiology" },
+    { id:"P002", rfid:"E5:F6:G7:H8", name:"Vikram Nair", blood:"O+", condition:"Diabetes Type 2", status:"Active", ward:"General" }
+  ];
+  savePatients();
+}
+
+let doctors = JSON.parse(localStorage.getItem('hms_doctors'));
+if (!doctors) {
+  doctors = [
+    { id:"D001", rfid:"00:11:AA:BB", name:"Dr. Ramesh Kumar", specialization:"Cardiology", status:"Available", shift:"Morning" },
+    { id:"D002", rfid:"CC:DD:EE:FF", name:"Dr. Priya Menon", specialization:"Endocrinology", status:"On Duty", shift:"Evening" }
+  ];
+  saveDoctors();
+}
+
+let accessLogs = [];
+const savedLogs = JSON.parse(localStorage.getItem('hms_logs') || '{}');
+if (savedLogs.date === todayStr && savedLogs.logs) {
+  accessLogs = savedLogs.logs;
+} else {
+  localStorage.removeItem('hms_logs'); 
+}
+
+let pendingRfidUID = null;
+
+// ===================== SAVE FUNCTIONS =====================
+function savePatients() { localStorage.setItem('hms_patients', JSON.stringify(patients)); }
+function saveDoctors() { localStorage.setItem('hms_doctors', JSON.stringify(doctors)); }
+function saveLogs() { localStorage.setItem('hms_logs', JSON.stringify({ date: todayStr, logs: accessLogs })); }
+function clearLogs() {
+  accessLogs = [];
+  localStorage.removeItem('hms_logs');
+  renderLogs();
+  logSystem('> Logs manually cleared.');
+}
+
+// ===================== DISCHARGE LOGIC =====================
+function dischargePatient(id) {
+  if (confirm("Are you sure you want to discharge this patient? They will be removed from the active dashboard tomorrow.")) {
+    const p = patients.find(x => x.id === id);
+    if (p) {
+      p.status = 'Discharged';
+      p.dischargeDate = todayStr; // Record the day they were discharged
+      savePatients();
+      renderPatients();
+      renderDashboard();
+      logSystem('> Patient Discharged: ' + p.name);
+    }
+  }
+}
+
+// ===================== EXPORT TO EXCEL (CSV) =====================
+function exportToExcel() {
+  if (accessLogs.length === 0) {
+    alert("There are no records to export today.");
+    return;
+  }
+  let csvContent = "data:text/csv;charset=utf-8,Date,Name,Role/Type,Entry Time,Exit Time\n";
+  const todayFormatted = new Date().toLocaleDateString('en-IN');
+  
+  accessLogs.forEach(log => {
+    const row = [todayFormatted, `"${log.name}"`, `"${log.type}"`, log.entryTime, log.exitTime].join(",");
+    csvContent += row + "\n";
+  });
+  
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `Hospital_Attendance_Log_${todayFormatted.replace(/\//g, '-')}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  logSystem('> Attendance Log Exported to Excel.');
+}
+
+// ===================== NAVIGATION =====================
+function showPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (id === 'dashboard') renderDashboard();
+  if (id === 'patients') renderPatients();
+  if (id === 'doctors') renderDoctors();
+  if (id === 'logs') renderLogs();
+}
+
+// ===================== RENDER DASHBOARD (LIVE TAB) =====================
+function renderDashboard() {
+  document.getElementById('dashDate').textContent = new Date().toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  
+  // LIVE TAB LOGIC: Only show patients if they are NOT Discharged OR if they were discharged TODAY.
+  // Tomorrow, they will vanish from this list automatically.
+  const livePatients = patients.filter(p => p.status !== 'Discharged' || p.dischargeDate === todayStr);
+
+  const stats = [
+    { label:'Active Patients', value: livePatients.length, color:'var(--accent)', icon:'🏥' },
+    { label:'In Ward Now', value: livePatients.filter(p=>p.status==='Active').length, color:'var(--green)', icon:'✅' },
+    { label:'Total Doctors', value: doctors.length, color:'var(--purple)', icon:'👨‍⚕️' }
+  ];
+  document.getElementById('statsGrid').innerHTML = stats.map(s => `
+    <div class="stat-card">
+      <div class="stat-icon">${s.icon}</div>
+      <div class="stat-num" style="color:${s.color}">${s.value}</div>
+      <div class="stat-label">${s.label}</div>
+    </div>`).join('');
+
+  document.getElementById('dashPatients').innerHTML = livePatients.slice(0,5).map(p => {
+    const badgeClass = p.status === 'Discharged' ? 'badge-discharged' : 'badge-active';
+    return `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div><div style="font-size:14px;font-weight:600">${p.name}</div><div style="font-size:11px;color:var(--muted)">${p.condition}</div></div>
+      <span class="badge ${badgeClass}">${p.status}</span>
+    </div>`
+  }).join('');
+
+  document.getElementById('dashDoctors').innerHTML = doctors.map(d => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div><div style="font-size:14px;font-weight:600">${d.name}</div><div style="font-size:11px;color:var(--muted)">${d.specialization}</div></div>
+      <span class="badge ${d.status==='On Duty'?'badge-onduty':'badge-available'}">${d.status}</span>
+    </div>`).join('');
+}
+
+function getBadge(status) {
+  if (status === 'Discharged') return 'badge-discharged';
+  if (status === 'On Duty') return 'badge-onduty';
+  if (status === 'Available') return 'badge-available';
+  return 'badge-active';
+}
+
+// ===================== PATIENTS & DOCTORS RENDER =====================
+function renderPatients() {
+  const tbody = document.getElementById('patientTableBody');
+  if(patients.length === 0) { document.getElementById('patientEmpty').style.display='block'; tbody.innerHTML=''; return; }
+  document.getElementById('patientEmpty').style.display='none';
+  tbody.innerHTML = patients.map(p => `
+    <tr id="row-${p.id}">
+      <td><span class="id-tag">${p.id}</span></td><td><span class="rfid-tag">${p.rfid}</span></td>
+      <td style="font-weight:600">${p.name}</td><td><span class="blood-tag">${p.blood}</span></td>
+      <td>${p.condition}</td><td style="color:var(--muted)">${p.ward}</td>
+      <td><span class="badge ${getBadge(p.status)}">${p.status}</span></td>
+      <td>
+        ${p.status !== 'Discharged' ? `<button class="btn-discharge" onclick="dischargePatient('${p.id}')">Discharge</button>` : `<span style="color:var(--muted);font-size:11px;font-weight:600">Discharged</span>`}
+      </td>
+    </tr>`).join('');
+  document.getElementById('patientBadge').textContent = patients.length;
+}
+
+function renderDoctors() {
+  const tbody = document.getElementById('doctorTableBody');
+  tbody.innerHTML = doctors.map(d => `
+    <tr id="dcard-${d.id}">
+      <td><span class="id-tag">${d.id}</span></td><td><span class="rfid-tag">${d.rfid}</span></td>
+      <td style="font-weight:600">${d.name}</td><td style="color:var(--muted)">${d.specialization}</td>
+      <td style="color:var(--muted)">${d.shift}</td>
+      <td><span class="badge ${getBadge(d.status)}">${d.status}</span></td>
+    </tr>`).join('');
+}
+
+// ===================== REGISTRATION MODALS =====================
+function openModal() { document.getElementById('modalOverlay').classList.add('open'); }
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); pendingRfidUID = null; }
+
+function openAddPatient(rfid='') {
+  pendingRfidUID = rfid;
+  document.getElementById('modalTitle').textContent = '🏥 Quick Add Patient';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="f_name" placeholder="Patient name"/></div>
+      <div class="form-group"><label class="form-label">RFID UID</label><input class="form-input" id="f_rfid" value="${rfid}" readonly style="color:var(--accent)"/></div>
+      <div class="form-group"><label class="form-label">Condition</label><input class="form-input" id="f_condition" placeholder="Medical condition"/></div>
+      <div class="form-group"><label class="form-label">Blood Group</label><input class="form-input" id="f_blood" value="O+"/></div>
+    </div>
+    <div class="form-btns">
+      <button class="btn-save" onclick="saveNewPatient()">Save and Clock IN</button>
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+    </div>`;
+  openModal();
+}
+
+function openAddDoctor(rfid='') {
+  pendingRfidUID = rfid;
+  document.getElementById('modalTitle').textContent = '👨‍⚕️ Quick Add Staff / Doctor';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="f_doc_name" placeholder="Dr. Name or Staff Name"/></div>
+      <div class="form-group"><label class="form-label">RFID UID</label><input class="form-input" id="f_doc_rfid" value="${rfid}" readonly style="color:var(--accent)"/></div>
+      <div class="form-group"><label class="form-label">Role / Specialization</label><input class="form-input" id="f_doc_spec" placeholder="e.g. Cardiologist, Nurse"/></div>
+      <div class="form-group"><label class="form-label">Shift</label><input class="form-input" id="f_doc_shift" value="Morning"/></div>
+    </div>
+    <div class="form-btns">
+      <button class="btn-save" onclick="saveNewDoctor()">Save and Clock IN</button>
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+    </div>`;
+  openModal();
+}
+
+function saveNewPatient() {
+  const rfidVal = document.getElementById('f_rfid').value;
+  const p = {
+    id: 'P' + String(patients.length+1).padStart(3,'0'),
+    rfid: rfidVal,
+    name: document.getElementById('f_name').value || "Unknown Patient",
+    blood: document.getElementById('f_blood').value,
+    condition: document.getElementById('f_condition').value || "Undiagnosed",
+    ward: "ER Intake", 
+    status: "Out of Ward" // Set to Out initially so the auto-scan clocks them IN
+  };
+  patients.push(p);
+  savePatients(); 
+  closeModal(); 
+  renderPatients(); 
+  renderDashboard();
+  logSystem('> New Patient Registered: ' + p.name);
+  
+  // Auto-scan the card to log their first entry!
+  setTimeout(() => processUID(rfidVal), 400);
+}
+
+function saveNewDoctor() {
+  const rfidVal = document.getElementById('f_doc_rfid').value;
+  const d = {
+    id: 'D' + String(doctors.length+1).padStart(3,'0'),
+    rfid: rfidVal,
+    name: document.getElementById('f_doc_name').value || "Unknown Staff",
+    specialization: document.getElementById('f_doc_spec').value || "General",
+    shift: document.getElementById('f_doc_shift').value || "Day",
+    status: "Available" // Set to Available initially so the auto-scan clocks them ON DUTY
+  };
+  doctors.push(d);
+  saveDoctors();
+  closeModal(); 
+  renderDoctors(); 
+  renderDashboard();
+  logSystem('> New Staff Registered: ' + d.name);
+  
+  // Auto-scan the card to log their first entry!
+  setTimeout(() => processUID(rfidVal), 400);
+}
+
+// ===================== ATTENDANCE LOGS RENDER =====================
+function renderLogs() {
+  const tbody = document.getElementById('logTableBody');
+  const empty = document.getElementById('logEmpty');
+  
+  if (accessLogs.length === 0) { 
+    empty.style.display='block'; 
+    tbody.innerHTML=''; 
+    document.getElementById('logBadge').textContent = '0';
+    return; 
+  }
+  
+  empty.style.display='none';
+  
+  tbody.innerHTML = [...accessLogs].reverse().map(log => {
+    const statusBadge = log.exitTime === '--' 
+      ? `<span class="badge badge-onduty">Inside / On Duty</span>` 
+      : `<span class="badge badge-available">Left / Clocked Out</span>`;
+      
+    return `
+      <tr>
+        <td style="font-weight:600">${log.name}</td>
+        <td style="color:var(--muted)">${log.type}</td>
+        <td style="color:var(--green);font-family:'JetBrains Mono',monospace">${log.entryTime}</td>
+        <td style="color:var(--red);font-family:'JetBrains Mono',monospace">${log.exitTime}</td>
+        <td>${statusBadge}</td>
+      </tr>
+    `;
+  }).join('');
+  
+  document.getElementById('logBadge').textContent = accessLogs.length;
+}
+
+// ===================== RFID ENTRY/EXIT LOGIC =====================
+function processUID(uid) {
+  uid = uid.trim().toUpperCase();
+  if (!uid || uid.length < 4) return;
+
+  const patient = patients.find(p => p.rfid.toUpperCase() === uid);
+  const doctor = doctors.find(d => d.rfid.toUpperCase() === uid);
+  const now = new Date().toLocaleTimeString('en-IN');
+
+  let personName = "Unknown";
+  let personType = "Unregistered";
+  let isEntering = true; 
+
+  if (patient) {
+    if (patient.status === 'Discharged') {
+        showScanResult(false, `⚠️ Patient ${patient.name} has been Discharged.`, uid);
+        return; // Block discharged patients from scanning back in
+    }
+  
+    personName = patient.name;
+    personType = "Patient · " + patient.ward;
+    patient.status = patient.status === 'Active' ? 'Out of Ward' : 'Active';
+    isEntering = patient.status === 'Active';
+    savePatients();
+    
+    showScanResult(true, `✅ Patient: ${patient.name} | ${patient.condition}`, uid);
+    showRFIDNotif('🏥', 'Patient ' + (isEntering ? 'Entered' : 'Left'), patient.name, uid);
+    highlightRow('row-' + patient.id);
+    
+  } else if (doctor) {
+    personName = doctor.name;
+    personType = "Staff · " + doctor.specialization;
+    isEntering = doctor.status === 'Available'; 
+    doctor.status = isEntering ? 'On Duty' : 'Available';
+    saveDoctors();
+    renderDoctors();
+    
+    showScanResult(true, `👨‍⚕️ ${doctor.name} | Clocked ${isEntering ? 'IN' : 'OUT'}`, uid);
+    showRFIDNotif('👨‍⚕️', 'Staff Update', doctor.name + ' Clocked ' + (isEntering ? 'IN' : 'OUT'), uid);
+    highlightRow('dcard-' + doctor.id);
+    
+  } else {
+    showScanResult(false, '⚠️ Unknown card — Register this UID', uid);
+    showRFIDNotif('⚠️', 'Unknown RFID Card', 'UID not registered. Check console.', uid);
+    
+    // THE CHOICE PROMPT FOR UNKNOWN CARDS
+    setTimeout(() => { 
+      if (confirm(`Unknown RFID Detected: ${uid}\n\nDo you want to register this card in the system?\n\n[OK] = Yes   [Cancel] = Ignore`)) {
+        if (confirm(`What type of user is this?\n\n[OK] = PATIENT\n[Cancel] = DOCTOR / STAFF`)) {
+          openAddPatient(uid);
+        } else {
+          openAddDoctor(uid);
+        }
+      } 
+    }, 800);
+    return; 
+  }
+
+  // --- ATTENDANCE TRACKER LOGIC ---
+  if (isEntering) {
+    accessLogs.push({ uid: uid, name: personName, type: personType, entryTime: now, exitTime: '--' });
+  } else {
+    let openSessionFound = false;
+    for (let i = accessLogs.length - 1; i >= 0; i--) {
+      if (accessLogs[i].uid === uid && accessLogs[i].exitTime === '--') {
+        accessLogs[i].exitTime = now; 
+        openSessionFound = true;
+        break; 
+      }
+    }
+    if (!openSessionFound) {
+      accessLogs.push({ uid: uid, name: personName, type: personType, entryTime: 'Missed Punch', exitTime: now });
+    }
+  }
+
+  saveLogs(); 
+  renderLogs();
+  renderDashboard();
+}
+
+function showScanResult(found, msg, uid) {
+  const area = document.getElementById('scanArea');
+  const uidEl = document.getElementById('scanUID');
+  area.classList.add('scanning');
+  uidEl.style.display = 'block'; uidEl.textContent = uid;
+  document.getElementById('scanResult').className = 'scan-result ' + (found ? 'found' : 'notfound');
+  document.getElementById('scanResult').textContent = msg;
+  setTimeout(() => { area.classList.remove('scanning'); uidEl.style.display = 'none'; }, 4000);
+}
+
+function showRFIDNotif(icon, title, desc, uid) {
+  const notif = document.getElementById('rfidNotif');
+  document.getElementById('rfidNotifIcon').textContent = icon;
+  document.getElementById('rfidNotifTitle').textContent = title;
+  document.getElementById('rfidNotifDesc').textContent = desc;
+  document.getElementById('rfidNotifUid').textContent = uid;
+  notif.classList.add('show');
+  setTimeout(() => notif.classList.remove('show'), 4000);
+}
+
+function highlightRow(id) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.add('tr-highlight'); setTimeout(() => el.classList.remove('tr-highlight'), 2000); }
+}
+
+function logSystem(msg) {
+  const log = document.getElementById('serialLog');
+  const time = new Date().toLocaleTimeString('en-IN');
+  log.innerHTML += `[${time}] ${msg}<br/>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+// ===================== FIREBASE CLOUD INTEGRATION =====================
+
+// ⚠️ REPLACE THIS WITH YOUR FIREBASE DATABASE URL ⚠️
+const firebaseConfig = {
+  databaseURL: "https://tech-d68c0-default-rtdb.asia-southeast1.firebasedatabase.app/" 
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const scansRef = db.ref('scans').limitToLast(1);
+let firstLoad = true;
+
+scansRef.on('child_added', (snapshot) => {
+  const data = snapshot.val();
+  if (firstLoad) { firstLoad = false; return; }
+
+  if (data && data.uid) {
+    logSystem('> Cloud Sync: Received Firebase UID ' + data.uid);
+    processUID(data.uid);
+  }
+});
+
+setTimeout(() => {
+  document.getElementById('rfidDot').className = 'rfid-dot connected';
+  document.getElementById('rfidStatusText').textContent = 'Cloud Active';
+  document.getElementById('rfidPortText').textContent = 'Firebase Realtime Database';
+  logSystem('> Cloud Database Connected. Listening for live ESP32 scans...');
+}, 800);
+
+// Init Views
+renderDashboard(); renderPatients(); renderDoctors(); renderLogs();
+</script>
+</body>
+</html>
